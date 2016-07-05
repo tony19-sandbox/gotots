@@ -48,7 +48,7 @@ Example Output:
 
 *bar-struct.ts*
 ```ts
-import { JsonMember, JsonObject } from 'type-json'
+import { JsonMember, JsonObject } from 'typedjson'
 
 @JsonObject
 export class BarStruct {
@@ -70,7 +70,7 @@ export class BarStruct {
 
 *foo-struct.ts*
 ```ts
-import { JsonMember, JsonObject } from 'type-json'
+import { JsonMember, JsonObject } from 'typedjson'
 
 @JsonObject
 export class FooStruct {

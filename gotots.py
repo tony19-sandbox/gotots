@@ -78,7 +78,7 @@ class TypeScriptClassWriter(object):
         path = os.path.join(outdir, self._to_dash_name(info['classname']) + '.ts')
 
         outputlines = [
-            'import { JsonMember, JsonObject } from \'type-json\'',
+            'import { JsonMember, JsonObject } from \'typedjson\'',
             '\n',
             '@JsonObject',
             'export class %s {' % info['classname'],
