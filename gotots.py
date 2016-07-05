@@ -54,10 +54,13 @@ class TypeScriptClassWriter(object):
         :param gotype: the Go type to convert
         :return: the corresponding TypeScript type (the original input)
         """
-        if gotype in ['int32', 'uint32', 'int', 'uint']:
+        if 'int' in gotype or 'float' in gotype:
             return 'number'
+        if gotype == 'bool':
+            return 'boolean'
         elif gotype.startswith('[]'):
-            return gotype[2:] + '[]'
+            remainder = gotype[2:] + '[]'
+            return remainder[1:] if remainder.startswith('*') else remainder
         elif gotype.startswith('*'):
             return gotype[1:]
         else:
