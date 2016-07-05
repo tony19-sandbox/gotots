@@ -2,6 +2,21 @@
 
 Converts a Go struct into TypeScript class files. This is intended for structs used in JSON interfaces. The output classes are decorated with [TypedJSON](https://github.com/JohnWhiteTB/TypedJSON).
 
+```
+usage: gotots.py [-h] [-d OUTDIR] [-v] input [input ...]
+
+Converts Go structs into TypeScript classes
+
+positional arguments:
+  input                 path to input file (Go)
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -d OUTDIR, --outdir OUTDIR
+                        path to output directory
+  -v, --verbose         print debug info while parsing
+```
+
 Example Input:
 
 ```go
