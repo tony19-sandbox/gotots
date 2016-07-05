@@ -1,4 +1,4 @@
-# `go_to_ts.py`
+# `gotots.py`
 
 Converts a Go struct into TypeScript class files. This is intended for structs used in JSON interfaces. The output classes are decorated with TypedJSON.
 
