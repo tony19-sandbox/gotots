@@ -17,6 +17,7 @@
 ########################################################################
 
 import argparse
+import errno
 import os
 import re
 import random
@@ -58,6 +59,15 @@ class TypeScriptClassWriter(object):
             return 'number'
         if gotype == 'bool':
             return 'boolean'
+        elif gotype.startswith('map['):
+            m = re.match('map\[(?P<keyType>[^\]]+)\](?P<valueType>[^\s]+)', gotype)
+            if m:
+                keyType = m.group('keyType')
+                valueType = m.group('valueType')
+                return '{[key: %s]: %s}' % (keyType, valueType)
+            else:
+                _xprint('warning: Cannot parse map type. Assuming "Object" type.')
+                return 'Object'
         elif gotype.startswith('[]'):
             remainder = gotype[2:] + '[]'
             return remainder[1:] if remainder.startswith('*') else remainder
@@ -72,12 +82,13 @@ class TypeScriptClassWriter(object):
         return re.sub('([a-z0-9])([A-Z])', r'\1-\2', s1).lower()
 
 
-    def write_class(self, outdir, info):
+    def write_class_typed_json(self, outdir, info):
         """
-        Writes TypeScript class based on given info
+        Writes TypeScript class (for TypedJSON) based on given info
         :param outdir: path to output directory
         :param info: Go class info
         """
+        self.make_sure_path_exists(outdir)
         path = os.path.join(outdir, self._to_dash_name(info['classname']) + '.ts')
 
         outputlines = [
@@ -93,19 +104,51 @@ class TypeScriptClassWriter(object):
                 name = f['name']
                 name = name[0].lower() + name[1:]
                 type = self._go_type_to_ts_type(f['type'])
-                optional = f['optional'] and ' // optional' or ''
+                optional = f['optional'] and 'optional' or ''
+                comments = ' '.join([optional, f.get('comment', '')])
+                comment = comments and ' // %s' % comments
 
                 lines = [
                     '  @JsonMember({name: \'%s\'})' % f['json'],
-                    '  public %s: %s;%s' % (name, type, optional),
+                    '  public %s: %s;%s' % (name, type, comment),
                     '\n'
                 ]
                 output.write('\n'.join(lines))
 
             output.write('}\n')
 
+    @staticmethod
+    def make_sure_path_exists(path):
+        try:
+            os.makedirs(path)
+        except OSError as exception:
+            if exception.errno != errno.EEXIST:
+                raise
+
+    def write_class(self, outdir, info):
+        """
+        Writes TypeScript class (vanilla TypeScript) based on given info
+        :param outdir: path to output directory
+        :param info: Go class info
+        """
+        self.make_sure_path_exists(outdir)
+        path = os.path.join(outdir, self._to_dash_name(info['classname']) + '.ts')
+
+        with open(path, 'w') as output:
+            output.write('export class %s {\n' % info['classname'])
+            for f in info['fields']:
+                type = self._go_type_to_ts_type(f['type'])
+                optional = f['optional'] and 'optional' or ''
+                comments = ' '.join([optional, f.get('comment', '')]).strip()
+                comment = comments and ' // %s' % comments
+
+                output.write('  public %s: %s;%s\n' % (f['json'], type, comment))
+
+            output.write('}\n')
+
 
     def write_enum(self, outdir, enum):
+        self.make_sure_path_exists(outdir)
         path = os.path.join(outdir, self._to_dash_name(enum['type']) + '.ts')
         with open(path, 'w') as output:
             output.write('export enum %s {\n' % enum['type'])
@@ -118,10 +161,11 @@ class GoFileParser(object):
 
     def __init__(self):
         self.re_class = re.compile(r'type (?P<class>[^\s]+) struct')
-        self.re_field = re.compile(r'(?P<field>[^\s]+)\s+(?P<type>[^\s]+)\s+`json:"(?P<json>[^," ]+)(?P<optional>,omitempty)?"`')
+        self.re_field = re.compile(r'(?P<field>[^\s]+)\s+(?P<type>[^\s]+)\s+`json:"(?P<json>[^," ]+),?(?P<optional>omitempty)?"`')
         self.re_enum_open = re.compile(r'^\s*const \(\s*')
         self.re_enum_item = re.compile(r'\s*(?P<enum>[^\s]+)\s+(?P<type>[^\s=]+)?(\s+=.*)?$')
         self.re_enum_close = re.compile(r'\s*\)\s*$')
+        self.re_ptr = re.compile(r'^\s*\*(?P<classname>[\w.]+)$')
 
 
     def parse(self, path):
@@ -147,6 +191,19 @@ class GoFileParser(object):
                         'fields': []
                     }
                     classlist.append(info)
+                    continue
+
+                m = self.re_ptr.search(line)
+                if m:
+                    field = {}
+                    field['classptr'] = 'class'
+                    field['optional'] = ''
+                    field['json'] = '*'
+                    field['comment'] = 'FIXME: Replace this field with contents of class'
+                    field['type'] = m.group('classname')
+                    info['fields'].append(field)
+                    _xprint('new ptr to class: %s' % classname)
+                    continue
 
                 m = self.re_field.search(line)
                 if m:
@@ -157,6 +214,7 @@ class GoFileParser(object):
                     field['optional'] = m.group('optional')
                     info['fields'].append(field)
                     _xprint('new field: %s' % field)
+                    continue
 
                 m = self.re_enum_open.search(line)
                 if m:
@@ -164,6 +222,7 @@ class GoFileParser(object):
                     enum = {}
                     enum['enum'] = []
                     _xprint('open enum')
+                    continue
 
                 elif in_enum:
                     m = self.re_enum_close.search(line)
@@ -177,12 +236,13 @@ class GoFileParser(object):
                         m = self.re_enum_item.search(line)
                         if m:
                             if 'type' not in enum:
-                                enum['type'] = m.group('type') or ('anon-' + random.randint())
+                                enum['type'] = m.group('type') or ('anon-%d' % random.randint(1000,9999))
                                 _xprint('enum type: %s' % enum['type'])
 
                             enum['enum'].append(m.group('enum'))
                             in_enum = enum['type']
                             _xprint('enum: %s' % m.group('enum'))
+                    continue
 
         return classlist, enumlist
 
